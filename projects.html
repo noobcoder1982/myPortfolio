@@ -1,0 +1,407 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Projects — Abhijeet</title>
+    
+    <style>
+        /* === GLOBAL & RESET STYLES === */
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            background-color: #000000;
+            color: #FFFFFF;
+            font-family: monospace;
+            overflow: hidden; /* IMPORTANT: Prevents scrolling */
+        }
+
+        #gallery-container {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            cursor: grab;
+        }
+
+        #gallery-container.dragging {
+            cursor: grabbing;
+        }
+
+        /* --- Overlay UI Elements --- */
+        .overlay-nav, .overlay-footer {
+            position: fixed;
+            left: 40px;
+            right: 40px;
+            z-index: 100;
+            pointer-events: none; /* Allows clicks to go through to the canvas */
+        }
+
+        .overlay-nav a, .overlay-footer span {
+            pointer-events: all; /* Make only the links/text clickable */
+        }
+
+        .overlay-nav {
+            top: 40px;
+            display: flex;
+            gap: 2rem;
+        }
+
+        .overlay-footer {
+            bottom: 40px;
+            display: flex;
+            justify-content: space-between;
+            font-size: clamp(2rem, 8vw, 5rem);
+            font-family: 'neue montreal', sans-serif;
+            font-weight: 400;
+            line-height: 0.9;
+            text-transform: lowercase;
+        }
+        
+        /* This creates a cool visual effect where text inverts color over the 3D scene */
+        .overlay-footer span {
+            mix-blend-mode: difference;
+        }
+
+        a {
+            color: #FFFFFF;
+            text-decoration: none;
+            font-size: 16px;
+            transition: opacity 0.3s;
+        }
+        
+        a:hover { 
+            opacity: 0.6; 
+        }
+    </style>
+</head>
+<body>
+    <!-- This div will hold the Three.js canvas -->
+    <div id="gallery-container"></div>
+
+    <!-- UI elements that sit on top -->
+    <nav class="overlay-nav">
+        <a href="profile.html">[ profile ]</a>
+        <a href="contact.html">[ contact ]</a>
+    </nav>
+    <footer class="overlay-footer">
+        
+    </footer>
+
+    <!-- Three.js library -->
+    <script src="https://cdn.jsdelivr.net/npm/three@0.137.5/build/three.min.js"></script>
+    
+    <!-- Main Gallery Script -->
+    <script type="module">
+        // 1. PROJECT DATA (Formerly data.js)
+        const projects = [
+            { title: ' ', year: '', image: 'img/image-1.jpg', href: '#' },
+            { title: ' ', year: '', image: 'img/image-2.jpg', href: '#' },
+            { title: ' ', year: '', image: 'img/image-3.jpg', href: '#' },
+            { title: ' ', year: '', image: 'img/image-4.jpg', href: '#' },
+            { title: ' ', year: '', image: 'img/image-5.jpg', href: '#' },
+            { title: ' ', year: '', image: 'img/image-6.jpg', href: '#' },
+            { title: ' ', year: '', image: 'img/image-7.jpg', href: '#' },
+            { title: ' ', year: '', image: 'img/image-8.jpg', href: '#' },
+            { title: ' ', year: '', image: 'img/image-9.jpg', href: '#' },
+            { title: ' ', year: '', image: 'img/image-10.jpg', href: '#' },
+            { title: ' ', year: '', image: 'img/image-11.jpg', href: '#' },
+            { title: ' ', year: '', image: 'img/image-10.jpg', href: '#' },
+            { title: ' ', year: '', image: 'img/image-11.jpg', href: '#' },
+            { title: ' ', year: '', image: 'img/image-10.jpg', href: '#' },
+            { title: ' ', year: '', image: 'img/image-11.jpg', href: '#' },
+            { title: ' ', year: '', image: 'img/image-12.jpg', href: '#' }
+        ];
+
+        // 2. MAIN GALLERY LOGIC (Formerly gallery.js)
+        class WebGLGallery {
+            constructor() {
+                this.container = document.getElementById('gallery-container');
+                if (!this.container) return;
+                
+                this.scene = new THREE.Scene();
+                this.camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 10);
+                this.renderer = new THREE.WebGLRenderer();
+                
+                this.isDragging = false;
+                this.isClick = false;
+                this.clickStartTime = 0;
+                this.previousMouse = { x: 0, y: 0 };
+                this.offset = new THREE.Vector2(0, 0);
+                this.targetOffset = new THREE.Vector2(0, 0);
+                this.zoomLevel = 1.0;
+                this.targetZoom = 1.0;
+                
+                this.config = {
+                    cellSize: 0.4,
+                    lerpFactor: 0.08,
+                    zoomLevelOnDrag: 1.1,
+                    clickThreshold: 200 // ms
+                };
+
+                this.init();
+            }
+
+            async init() {
+                this.renderer.setSize(window.innerWidth, window.innerHeight);
+                this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+                this.container.appendChild(this.renderer.domElement);
+                this.camera.position.z = 1;
+
+                const { imageAtlas, textAtlas } = await this.loadAssets();
+                this.createPlane(imageAtlas, textAtlas);
+                this.addEventListeners();
+                this.animate();
+            }
+
+            loadAssets() {
+                return new Promise(async (resolve) => {
+                    const textureLoader = new THREE.TextureLoader();
+                    const imageTextures = await Promise.all(projects.map(p => textureLoader.loadAsync(p.image)));
+                    const textTextures = projects.map(p => this.createTextTexture(p.title, p.year));
+                    const imageAtlas = this.createTextureAtlas(imageTextures);
+                    const textAtlas = this.createTextureAtlas(textTextures, true);
+                    resolve({ imageAtlas, textAtlas });
+                });
+            }
+
+            createTextTexture(title, year) {
+                const canvas = document.createElement('canvas');
+                const ctx = canvas.getContext('2d');
+                canvas.width = 512;
+                canvas.height = 128;
+
+                ctx.fillStyle = 'white';
+                ctx.font = '32px monospace';
+                ctx.textAlign = 'left';
+                ctx.textBaseline = 'middle';
+                ctx.fillText(title.toUpperCase(), 20, canvas.height / 2 - 20);
+                
+                ctx.font = '24px monospace';
+                ctx.textAlign = 'right';
+                ctx.fillText(year, canvas.width - 20, canvas.height / 2 + 20);
+
+                return new THREE.CanvasTexture(canvas);
+            }
+
+            createTextureAtlas(textures, isText = false) {
+                const atlasSize = Math.ceil(Math.sqrt(textures.length));
+                const textureSize = isText ? 512 : 512;
+                
+                const canvas = document.createElement('canvas');
+                const ctx = canvas.getContext('2d');
+                canvas.width = canvas.height = atlasSize * textureSize;
+
+                if (!isText) {
+                    ctx.fillStyle = '#111';
+                    ctx.fillRect(0, 0, canvas.width, canvas.height);
+                }
+
+                textures.forEach((texture, i) => {
+                    const x = (i % atlasSize) * textureSize;
+                    const y = Math.floor(i / atlasSize) * (isText ? 128 : textureSize);
+                    ctx.drawImage(texture.image, x, y, textureSize, isText ? 128 : textureSize);
+                });
+
+                const atlasTexture = new THREE.CanvasTexture(canvas);
+                atlasTexture.minFilter = THREE.LinearFilter;
+                atlasTexture.magFilter = THREE.LinearFilter;
+                
+                return atlasTexture;
+            }
+
+            createPlane(imageAtlas, textAtlas) {
+                const geometry = new THREE.PlaneGeometry(2, 2);
+                const material = new THREE.ShaderMaterial({
+                    uniforms: {
+                        uOffset: { value: this.offset },
+                        uResolution: { value: new THREE.Vector2(window.innerWidth, window.innerHeight) },
+                        uMousePos: { value: new THREE.Vector2(-10, -10) },
+                        uZoom: { value: 1.0 },
+                        uCellSize: { value: this.config.cellSize },
+                        uTextureCount: { value: projects.length },
+                        uImageAtlas: { value: imageAtlas },
+                        uTextAtlas: { value: textAtlas },
+                    },
+                    vertexShader: `
+                        varying vec2 vUv;
+                        void main() { vUv = uv; gl_Position = vec4(position, 1.0); }
+                    `,
+                    fragmentShader: `
+                        // This entire block is the GLSL shader code running on the GPU
+                        uniform vec2 uOffset;
+                        uniform vec2 uResolution;
+                        uniform vec2 uMousePos;
+                        uniform float uZoom;
+                        uniform float uCellSize;
+                        uniform float uTextureCount;
+                        uniform sampler2D uImageAtlas;
+                        uniform sampler2D uTextAtlas;
+                        varying vec2 vUv;
+
+                        void main() {
+                            vec2 screenUV = (vUv - 0.5) * 2.0;
+                            float aspectRatio = uResolution.x / uResolution.y;
+                            
+                            float radius = length(screenUV);
+                            float distortion = 1.0 - 0.08 * radius * radius;
+                            vec2 distortedUV = screenUV * distortion;
+                            
+                            vec2 worldCoord = distortedUV;
+                            worldCoord.x *= aspectRatio;
+                            worldCoord *= uZoom;
+                            worldCoord += uOffset;
+
+                            vec2 cellPos = worldCoord / uCellSize;
+                            vec2 cellID = floor(cellPos);
+                            vec2 cellUV = fract(cellPos);
+
+                            float gridColumns = 3.0;
+                            float textureIndex = mod(cellID.x + cellID.y * gridColumns, uTextureCount);
+                            if (cellID.x + cellID.y * gridColumns < 0.0) {
+                                textureIndex = uTextureCount - mod(abs(cellID.x + cellID.y * gridColumns), uTextureCount);
+                            }
+                            
+                            float atlasGridSize = ceil(sqrt(uTextureCount));
+                            vec2 atlasPos = vec2(mod(textureIndex, atlasGridSize), floor(textureIndex / atlasGridSize));
+                            
+                            vec2 imageAtlasUV = (atlasPos + cellUV) / atlasGridSize;
+                            vec2 textAtlasUV = (atlasPos + vec2(cellUV.x, cellUV.y * 4.0)) / atlasGridSize; // Adjust for 4:1 aspect ratio of text canvas
+
+                            vec3 imageColor = texture2D(uImageAtlas, imageAtlasUV).rgb;
+                            vec4 textColor = texture2D(uTextAtlas, textAtlasUV);
+
+                            float border = 0.005;
+                            float gridMask = smoothstep(border, border + 0.002, cellUV.x) * (1.0 - smoothstep(1.0 - border - 0.002, 1.0 - border, cellUV.x));
+                            gridMask *= smoothstep(border, border + 0.002, cellUV.y) * (1.0 - smoothstep(1.0 - border - 0.002, 1.0 - border, cellUV.y));
+                            
+                            // Mix text on top of image
+                            vec3 finalColor = mix(imageColor, textColor.rgb, textColor.a);
+
+                            gl_FragColor = vec4(finalColor * gridMask, 1.0);
+                        }
+                    `
+                });
+
+                this.plane = new THREE.Mesh(geometry, material);
+                this.scene.add(this.plane);
+            }
+
+            addEventListeners() {
+                this.container.addEventListener('mousemove', this.onPointerMove.bind(this));
+                this.container.addEventListener('mousedown', this.onPointerDown.bind(this));
+                window.addEventListener('mouseup', this.onPointerUp.bind(this));
+                window.addEventListener('resize', this.onResize.bind(this));
+            }
+
+            onPointerDown(e) {
+                this.isDragging = true;
+                this.isClick = true;
+                this.clickStartTime = Date.now();
+                this.container.classList.add('dragging');
+                this.previousMouse = { x: e.clientX, y: e.clientY };
+                
+                setTimeout(() => {
+                    if (this.isDragging) {
+                        this.targetZoom = this.config.zoomLevelOnDrag;
+                    }
+                }, 150);
+            }
+            
+            onPointerMove(e) {
+                if (this.isDragging) {
+                    const deltaX = e.clientX - this.previousMouse.x;
+                    const deltaY = e.clientY - this.previousMouse.y;
+                    
+                    if(Math.abs(deltaX) > 2 || Math.abs(deltaY) > 2) {
+                        this.isClick = false;
+                    }
+
+                    this.targetOffset.x -= deltaX * 0.002;
+                    this.targetOffset.y += deltaY * 0.002;
+                    this.previousMouse = { x: e.clientX, y: e.clientY };
+                }
+                 if (this.plane) {
+                    this.plane.material.uniforms.uMousePos.value.set(
+                        (e.clientX / window.innerWidth - 0.5) * 2.0,
+                        -((e.clientY / window.innerHeight - 0.5) * 2.0)
+                    );
+                }
+            }
+
+            onPointerUp(e) {
+                this.isDragging = false;
+                this.container.classList.remove('dragging');
+                this.targetZoom = 1.0;
+
+                if (this.isClick && (Date.now() - this.clickStartTime < this.config.clickThreshold)) {
+                    this.handleClick(e);
+                }
+            }
+            
+            handleClick(e) {
+                if(!this.plane) return;
+                
+                // Convert click coords to shader's world coords to find the clicked cell
+                const rect = this.renderer.domElement.getBoundingClientRect();
+                const x = e.clientX - rect.left;
+                const y = e.clientY - rect.top;
+
+                let screenUV = new THREE.Vector2(x / rect.width, 1.0 - y / rect.height);
+                screenUV.subScalar(0.5).multiplyScalar(2.0);
+
+                let radius = screenUV.length();
+                let distortion = 1.0 - 0.08 * radius * radius;
+                let distortedUV = screenUV.clone().multiplyScalar(distortion);
+                
+                let worldCoord = distortedUV;
+                worldCoord.x *= rect.width / rect.height;
+                worldCoord.multiplyScalar(this.zoomLevel);
+                worldCoord.add(this.offset);
+
+                let cellID = new THREE.Vector2(Math.floor(worldCoord.x / this.config.cellSize), Math.floor(worldCoord.y / this.config.cellSize));
+                
+                let gridColumns = 3.0;
+                let textureIndex = (cellID.x + cellID.y * gridColumns) % projects.length;
+                let actualIndex = textureIndex < 0 ? projects.length + textureIndex : textureIndex;
+                actualIndex = Math.floor(actualIndex);
+
+                if (projects[actualIndex] && projects[actualIndex].href) {
+                    console.log("Clicked Project:", projects[actualIndex].title);
+                    // window.location.href = projects[actualIndex].href;
+                }
+            }
+
+            onResize() {
+                this.renderer.setSize(window.innerWidth, window.innerHeight);
+                this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+                this.camera.updateProjectionMatrix();
+                if (this.plane) {
+                    this.plane.material.uniforms.uResolution.value.set(window.innerWidth, window.innerHeight);
+                }
+            }
+
+            animate() {
+                this.offset.lerp(this.targetOffset, this.config.lerpFactor);
+                this.zoomLevel += (this.targetZoom - this.zoomLevel) * this.config.lerpFactor;
+
+                if (this.plane) {
+                    this.plane.material.uniforms.uOffset.value.copy(this.offset);
+                    this.plane.material.uniforms.uZoom.value = this.zoomLevel;
+                }
+                
+                this.renderer.render(this.scene, this.camera);
+                requestAnimationFrame(this.animate.bind(this));
+            }
+        }
+
+        // Initialize the gallery
+        new WebGLGallery();
+    </script>
+</body>
+</html>

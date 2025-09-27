@@ -1,0 +1,99 @@
+* {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+}
+
+body {
+    margin: 0;
+    background: black;
+    color: white;
+    font-family: host grotesk;
+}
+
+.wrapper {
+    padding-left: 40px;
+    padding-right: 40px;
+}
+header h1 {
+    font-size: 18.5vw;
+    font-weight: 600;
+    text-transform: uppercase;
+    font-style: normal;
+    margin: 0 0 auto;
+    line-height: 0.9;
+    white-space: nowrap;
+}
+
+html {
+    height: 100%;
+}
+
+main {
+    position: relative;
+    flex-grow: 1;
+}
+
+header {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+
+/*Image grid*/
+.grid {
+    display: grid;
+    grid-template-columns: repeat(6, 1fr);
+    justify-items: center;
+    padding-left: 15px;
+    padding-right: 15px;
+    /* Remove padding: 40px; from here */
+}
+
+.grid img {
+    width: 200px;
+    height: 250px;
+    display:block;
+    object-fit: cover;
+}
+
+/*Navbar*/
+.nav-link {
+    position: absolute;
+    bottom: -35px;
+    color: white;
+    text-decoration: none;
+    font-size: 16px;
+    font-family: cascadia code;
+    transition: color 0.3s ease;
+}
+
+.nav-link:hover {
+    color: grey;
+    text-decoration: none;
+}
+
+.profile {
+    left: 1.6%;
+}
+
+.projects {
+    left: 18%;
+}
+
+.contact {
+    right: 1.6%;
+}
+
+/*Footer*/
+footer {
+    display: flex;
+    justify-content: space-between;
+    padding-top: 260px;
+    padding-bottom: 40px;
+    font-size: 8vw;
+    font-family: neue montreal;
+    padding-left: 10px;
+    padding-right: 10px;   
+    line-height: 0;
+} 
